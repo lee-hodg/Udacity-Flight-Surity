@@ -32,6 +32,32 @@ contract FlightSuretyData {
     // the key is the address we are voting to add and the value is an array of airline addresses who voted to add this airline
     mapping(address => address[]) airlineVotes;           
 
+    struct Flight {
+        string flightName;
+        address airline;
+        uint8 statusCode;
+        uint256 timestamp;
+        bytes32[] insuranceContracts;
+    }
+
+    struct Insurance {
+        address payable passengerAddress;
+        uint            insuranceAmount;
+        bool            isPaid;
+    }
+
+    // Mapping from flight key to the Flight
+    mapping (bytes32 => Flight) private flights;
+    // From insurance key to an array of Insurance objects (per user and amount)
+    mapping (bytes32 => Insurance) private insurances;
+
+    struct Passenger {
+        address passengerAddr;
+        uint256 creditAmount;
+        bool exists;
+    }
+    mapping(address => Passenger) private passengers;
+
     /********************************************************************************************/
     /*                                       EVENT DEFINITIONS                                  */
     /********************************************************************************************/
@@ -144,6 +170,11 @@ contract FlightSuretyData {
 
     }
 
+    modifier checkPassengerBuyAmount() {
+        require(msg.value >= 1 gwei && msg.value <= 1 ether, "INSURANCE IS CAPPED AT 1 ETHER");
+        _;
+    }
+
     /********************************************************************************************/
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
@@ -226,13 +257,21 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */   
-    function buy
-                            (                             
-                            )
-                            external
-                            payable
-    {
+    function buy(address _passengerAddress, bytes32 _flightKey) external payable 
+    checkPassengerBuyAmount() isCallerAuthorized() requireIsOperational() {        
+        
+        bytes32 _insuranceKey = getInsuranceKey(_passengerAddress, _flightKey);
+        
+        require(insurances[_insuranceKey].passengerAddress != address(0), "Passenger already has insurance!");
+        payable(address(this)).transfer(msg.value);
+        
+        insurances[_insuranceKey] = Insurance({
+                passengerAddress: payable(_passengerAddress),
+                insuranceAmount: msg.value,
+                isPaid: false
+                });
 
+        flights[_flightKey].insuranceContracts.push(_insuranceKey);
     }
 
     /**
@@ -240,11 +279,40 @@ contract FlightSuretyData {
     */
     function creditInsurees
                                 (
+                                    address airline,
+                                    string calldata flight,
+                                    uint256 timestamp
                                 )
                                 external
-                                pure
     {
+        bytes32 flightKey = getFlightKey(airline, flight, timestamp);
+
+        for (uint256 i = 0; i < flights[flightKey].insuranceContracts.length; i++) {
+            bytes32 insuranceContractKey = flights[flightKey].insuranceContracts[i];
+
+            address passengerAddress = insurances[insuranceContractKey].passengerAddress;
+            uint256 insuranceAmount = insurances[insuranceContractKey].insuranceAmount;
+            uint256 payAmount = insuranceAmount * 15/10;
+            insurances[insuranceContractKey].isPaid = true;
+
+            if(passengers[passengerAddress].exists){
+
+                uint256 updatedCreditAmount = passengers[passengerAddress].creditAmount + payAmount;
+                passengers[passengerAddress].creditAmount = updatedCreditAmount;
+            
+            } else {
+
+                passengers[passengerAddress] = Passenger({
+                                                passengerAddr: passengerAddress,
+                                                creditAmount: payAmount,
+                                                exists: true
+                                        });
+
+            }
+
+        }
     }
+    
     
 
     /**
@@ -253,10 +321,14 @@ contract FlightSuretyData {
     */
     function pay
                             (
+                                address payable passengerAddr
                             )
                             external
-                            pure
+                            payable
+                            requireIsOperational
     {
+        uint256 payment = passengers[passengerAddr].creditAmount;
+        passengerAddr.transfer(payment);
     }
 
    /**
@@ -284,6 +356,12 @@ contract FlightSuretyData {
 
         emit AirlineFunded(airlineAddress,  airlines[airlineAddress].funds, airlines[airlineAddress].isRegistered, airlines[airlineAddress].isFunded);
 
+    }
+
+    function getInsuranceKey(address _passengerAddress, bytes32 _flightKey) pure internal returns(bytes32) {
+        bytes32 _addressToBytes32 = bytes32(uint256(uint160(_passengerAddress)) << 96);
+        return keccak256(abi.encodePacked(_addressToBytes32, _flightKey));
+        //return keccak256(abi.encodePacked(_passengerAddress, _flightKey));
     }
 
     function getFlightKey
