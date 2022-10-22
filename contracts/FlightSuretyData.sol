@@ -249,7 +249,6 @@ contract FlightSuretyData {
         airlines[airlineAddress] = Airline(name, 0, true, false);
         authorizedCallers[airlineAddress] = 1;
         registeredAirlineCount++;
-
     }
 
 
@@ -257,9 +256,13 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */   
-    function buy(address _passengerAddress, bytes32 _flightKey) external payable 
+    function buy(address _passengerAddress, address airline,
+                 string calldata flight,
+                 uint256 timestamp) external payable 
     checkPassengerBuyAmount() isCallerAuthorized() requireIsOperational() {        
         
+
+        bytes32 _flightKey = getFlightKey(airline, flight, timestamp);
         bytes32 _insuranceKey = getInsuranceKey(_passengerAddress, _flightKey);
         
         require(insurances[_insuranceKey].passengerAddress != address(0), "Passenger already has insurance!");
@@ -387,6 +390,37 @@ contract FlightSuretyData {
         } else{
             return false;
         }
+    } 
+
+    /**
+    * Register a flight
+    */
+    function registerFlight( 
+                                address airline,
+                                string calldata flightName,
+                                uint256 timestamp
+                            )
+    external {
+        bytes32 flightKey = getFlightKey(airline, flightName, timestamp);
+        flights[flightKey].flightName = flightName;   
+        flights[flightKey].airline = airline;
+        flights[flightKey].statusCode = 0;
+        flights[flightKey].timestamp = timestamp;
+    } 
+
+    /**
+    * Update a flight status
+    */
+    function updateFlightStatus( 
+                                address airline,
+                                string calldata flightName,
+                                uint256 timestamp,
+                                uint8 statusCode
+                            )
+    external {
+        bytes32 flightKey = getFlightKey(airline, flightName, timestamp);
+        require(flights[flightKey].airline == msg.sender, "Must own flight to change its status");
+        flights[flightKey].statusCode = statusCode;
     } 
 
     /**

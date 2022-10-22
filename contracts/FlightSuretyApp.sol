@@ -2,6 +2,8 @@
 pragma solidity ^0.8.17;
 
 // SafeMath built-in in later Sol
+import "./FlightSuretyData.sol";
+
 
 /************************************************** */
 /* FlightSurety Smart Contract                      */
@@ -30,7 +32,7 @@ contract FlightSuretyApp {
     }
     mapping(bytes32 => Flight) private flights;
 
-    FlightSuretyDataProxy flightSuretyData;
+    FlightSuretyData flightSuretyData;
 
  
     /********************************************************************************************/
@@ -71,74 +73,38 @@ contract FlightSuretyApp {
     */
     constructor
                                 (
-                                  address dataAddress
+                                  address payable dataAddress
                                 )
     {
         contractOwner = msg.sender;
-        flightSuretyData = FlightSuretyDataProxy(dataAddress);
+        flightSuretyData = FlightSuretyData(dataAddress);
     }
 
     /********************************************************************************************/
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
 
-    // function isOperational() 
-    //                         public 
-    //                         pure 
-    //                         returns(bool) 
-    // {
-    //     return true;  // Modify to call data contract's status
-    // }
+    function isOperational() external view returns(bool) {
+            return flightSuretyData.isOperational();
+    }
+
 
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
     /********************************************************************************************/
 
-  
-   /**
-    * @dev Add an airline to the registration queue
-    *
-    */   
-    function registerAirline
-                            (   
-                            )
-                            external
-                            pure
-                            returns(bool success, uint256 votes)
-    {
-        return (success, 0);
-    }
-
-
    /**
     * @dev Register a future flight for insuring.
     *
     */  
-    function registerFlight
-                                (
-                                )
-                                external
-                                pure
-    {
-
+    function registerFlight (
+                                address airline,
+                                string calldata flight,
+                                uint256 timestamp
+                            )
+    external {
+        flightSuretyData.registerFlight(airline, flight, timestamp);
     }
-    
-   /**
-    * @dev Called after oracle has updated flight status
-    *
-    */  
-    function processFlightStatus
-                                (
-                                    address airline,
-                                    string memory flight,
-                                    uint256 timestamp,
-                                    uint8 statusCode
-                                )
-                                internal
-                                pure
-    {
-    }
-
 
     // Generate a request for oracles to fetch flight information
     function fetchFlightStatus
@@ -161,7 +127,7 @@ contract FlightSuretyApp {
     } 
 
 
-// region ORACLE MANAGEMENT
+    // region ORACLE MANAGEMENT
 
     // Incremented to add pseudo-randomness at various points
     uint8 private nonce = 0;    
@@ -336,36 +302,39 @@ contract FlightSuretyApp {
 /*                                DATA CONTRACT ENCAPSULATIONS                              */
 /********************************************************************************************/
 
-  // region FlightSuretyData encapsulations
-//   function getAirlineName(address account) external view returns(string memory) {
-//       return flightSuretyData.getAirlineName(account);
-//   }
-//   function getAirlineAccount(address account) external view returns(address) {
-//       return flightSuretyData.getAirlineAccount(account);
-//   }
-//   function getRegistrationStatus(address account) external view returns(bool) {
-//       return flightSuretyData.getRegistrationStatus(account);
-//   }
-//   function getAuthorizationStatus(address account) external view returns(bool) {
-//       return flightSuretyData.getAuthorizationStatus(account);
-//   }
-//   function getOperationalVote(address account) external view returns(bool) {
-//       return flightSuretyData.getOperationalVote(account);
-//   }
+
   function registerAirline(address newAirline, string calldata name) external{
       return flightSuretyData.registerAirline(newAirline, name);
   }
-//   function getAuthorizedAirlineCount() external view returns(uint256) {
-//       return flightSuretyData.getAuthorizedAirlineCount();
-//   }
+
   function fund(address owner) public payable {
       flightSuretyData.fund{value: msg.value}(owner);
   }
 
-  //utility function
-  function isOperational() external view returns(bool) {
-        return flightSuretyData.isOperational();
+  function buy(address _passengerAddress, address airline,
+               string calldata flight,
+               uint256 timestamp) public payable {
+      flightSuretyData.buy{value: msg.value}({_passengerAddress: _passengerAddress, 
+        airline: airline, flight: flight, timestamp: timestamp});
   }
+
+    function processFlightStatus(
+                                    address airline,
+                                    string memory flight,
+                                    uint256 timestamp,
+                                    uint8 statusCode
+                                )
+    internal {
+        flightSuretyData.updateFlightStatus(airline, flight, timestamp, statusCode);
+        if(statusCode != STATUS_CODE_ON_TIME){
+             flightSuretyData.creditInsurees(airline, flight, timestamp);
+        }
+    }
+
+  function pay() external {
+        flightSuretyData.pay(payable(msg.sender));
+  }
+
 
 }   
 
@@ -378,15 +347,16 @@ contract FlightSuretyApp {
 /*                                    DATA CONTRACT INTERFACE                               */
 /********************************************************************************************/
 
-contract FlightSuretyDataProxy {
+// contract FlightSuretyDataProxy {
 
-    // function getAirlineName(address airline) external view returns(string memory){}
-    // function getAirlineAccount(address airline) external view returns(address){}
-    // function getRegistrationStatus(address airline) external view returns(bool){}
-    // function getAuthorizationStatus(address airline) external view returns(bool){}
-    // function getOperationalVote(address airline) external view returns(bool){}
-    function isOperational() external view returns(bool){}
-    function registerAirline(address newAirline, string calldata name) external{}
-    // function getAuthorizedAirlineCount() external view returns(uint256){}
-    function fund(address owner) public payable {}
-}
+//     // function getAirlineName(address airline) external view returns(string memory){}
+//     // function getAirlineAccount(address airline) external view returns(address){}
+//     // function getRegistrationStatus(address airline) external view returns(bool){}
+//     // function getAuthorizationStatus(address airline) external view returns(bool){}
+//     // function getOperationalVote(address airline) external view returns(bool){}
+//     function isOperational() external view returns(bool){}
+//     function registerAirline(address newAirline, string calldata name) external{}
+//     // function getAuthorizedAirlineCount() external view returns(uint256){}
+//     function fund(address owner) public payable {}
+//     function buy(address passengerAddress, address airline, string calldata flight, uint256 timestamp) public payable {}
+// }
