@@ -1,9 +1,13 @@
 
 var Test = require('../config/testConfig.js');
+const Web3 = require('web3');
 
 contract('Flight Surety Tests', async (accounts) => {
 
   let config;
+  const flight = 'ZS410';
+  const timestamp = Math.floor(Date.now() / 1000);
+
   before('setup contract', async () => {
     config = await Test.Config(accounts);
     await config.flightSuretyData.authorizeCaller(config.flightSuretyApp.address, {from: config.owner});
@@ -161,5 +165,65 @@ contract('Flight Surety Tests', async (accounts) => {
 
 
   });
+
+  it('(passenger) may pay up to 1 ether to buy insurance', async () => {
+    const insuranceAmount = Web3.utils.toWei('1', "ether");
+    const balancePreTransaction = await web3.eth.getBalance(accounts[6]);
+    try {
+    await config.flightSuretyApp.buy(accounts[6], config.firstAirline, flight, timestamp,
+         {from : accounts[6], value: insuranceAmount, gasPrice: 0});
+    } catch(e){
+        console.log(e);
+    }
+    const balancePostTransaction = await web3.eth.getBalance(accounts[6]);
+
+    assert.equal(insuranceAmount , balancePreTransaction-balancePostTransaction, 'Incorrect amount deducted in transaction');
+});
+
+it('(passenger) cannot pay over 1 ether to buy insurance', async () => {
+    const insuranceAmount = Web3.utils.toWei('2', "ether");
+    const balancePreTransaction = await web3.eth.getBalance(accounts[6]);
+    try {
+    await config.flightSuretyApp.buy(accounts[6], config.firstAirline, flight, timestamp,
+         {from : accounts[6], value: insuranceAmount, gasPrice: 0});
+    } catch(e){
+        //console.log(e);
+    }
+    const balancePostTransaction = await web3.eth.getBalance(accounts[6]);
+
+    assert.equal(balancePreTransaction , balancePostTransaction, 'Nothing should be deducted if attempts to buy too large amount of insurance');
+});
+
+it('eligible (passenger) should be able to withdraw credits', async () => {
+
+    await config.flightSuretyData.creditInsurees(config.firstAirline, flight, timestamp);
+
+    const balancePreTransaction = Web3.utils.toBN(await web3.eth.getBalance(accounts[6]));
+    console.log(accounts[6]);
+    console.log(balancePreTransaction.toString());
+
+    const withdrawVal = Web3.utils.toWei('0.00001', "ether");
+
+    // try{
+    const txnReceipt = await config.flightSuretyApp.pay(withdrawVal, {from : accounts[6]});
+    // }catch(e){
+    //     console.log(e);
+    // }
+
+
+    const gasUsed = Web3.utils.toBN(txnReceipt.receipt.gasUsed);
+    // Obtain gasPrice from the transaction
+    const tx = await web3.eth.getTransaction(txnReceipt.tx);
+    const gasPrice = Web3.utils.toBN(tx.gasPrice);
+
+    const balancePostTransaction = Web3.utils.toBN(await web3.eth.getBalance(accounts[6]));
+    console.log(balancePostTransaction.toString());
+    const gasCost = gasPrice.mul(gasUsed);
+    console.log(gasCost.toString());
+
+    assert.equal(balancePostTransaction.add(gasCost).toString(),  
+                 balancePreTransaction.add(Web3.utils.toBN(withdrawVal)).toString(), "Must be equal");
+
+});
 
 });

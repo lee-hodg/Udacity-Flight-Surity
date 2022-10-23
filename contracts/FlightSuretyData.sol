@@ -44,6 +44,7 @@ contract FlightSuretyData {
         address payable passengerAddress;
         uint            insuranceAmount;
         bool            isPaid;
+        
     }
 
     // Mapping from flight key to the Flight
@@ -62,8 +63,10 @@ contract FlightSuretyData {
     /*                                       EVENT DEFINITIONS                                  */
     /********************************************************************************************/
     event AirlineFunded(address airline, uint256 amount, bool isRegistered, bool isFunded);
+    event PassengerCredited(address passenger, uint256 amount);
+    event PassengerPayout(address passenger, uint256 amount, address sender, uint256 contractBalance);
     event FundsReceived(address receiver, uint256 amount, address sender);
-    event TestEvent(uint256 x);
+    event TestEvent(address payable x);
     event AirlineRegistered(address airlineAddress, string name, uint256 funds,  bool isRegistered, bool isFunded);
     event AchievedMultiPartyConsensus(address newAirlineAddress, uint256 votesCount, uint airlinesCount);
     event NotYetAchievedMultiPartyConsensus(address newAirlineAddress, uint256 votesCount, uint airlinesCount);
@@ -263,9 +266,8 @@ contract FlightSuretyData {
         
 
         bytes32 _flightKey = getFlightKey(airline, flight, timestamp);
-        bytes32 _insuranceKey = getInsuranceKey(_passengerAddress, _flightKey);
-        
-        require(insurances[_insuranceKey].passengerAddress != address(0), "Passenger already has insurance!");
+        bytes32 _insuranceKey = getInsuranceKey(_passengerAddress, _flightKey);        
+        require(insurances[_insuranceKey].passengerAddress == address(0), "Passenger already has insurance!");
         payable(address(this)).transfer(msg.value);
         
         insurances[_insuranceKey] = Insurance({
@@ -302,6 +304,7 @@ contract FlightSuretyData {
 
                 uint256 updatedCreditAmount = passengers[passengerAddress].creditAmount + payAmount;
                 passengers[passengerAddress].creditAmount = updatedCreditAmount;
+                emit PassengerCredited(passengerAddress, updatedCreditAmount);
             
             } else {
 
@@ -310,6 +313,8 @@ contract FlightSuretyData {
                                                 creditAmount: payAmount,
                                                 exists: true
                                         });
+                emit PassengerCredited(passengerAddress, payAmount);
+
 
             }
 
@@ -324,15 +329,37 @@ contract FlightSuretyData {
     */
     function pay
                             (
-                                address payable passengerAddr
+                                address payable passengerAddr,
+                                uint256 amount
                             )
                             external
-                            payable
                             requireIsOperational
     {
-        uint256 payment = passengers[passengerAddr].creditAmount;
-        passengerAddr.transfer(payment);
+        uint256 creditAmount = passengers[passengerAddr].creditAmount;
+
+        // Check first if any credit to actually w/d
+        require(creditAmount >= amount, "Not enough balance available to withdraw"); 
+
+        // Set to 0 before the transfer
+        passengers[passengerAddr].creditAmount = passengers[passengerAddr].creditAmount - amount ;
+        // do transfer from contract owner to passenger
+        emit PassengerPayout(passengerAddr, amount, msg.sender, address(this).balance);
+        passengerAddr.transfer(amount);
+        // _passengerTransfer(passengerAddr, creditAmount);
     }
+
+    // function _passengerTransfer
+    //                         (
+    //                             address payable passengerAddr,
+    //                             uint256 amount
+    //                         )
+    //                         internal
+    //                         requireIsOperational
+    // {
+
+    //     emit PassengerPayout(passengerAddr, amount, msg.sender);
+    //     // passengerAddr.transfer(amount);
+    // }
 
    /**
     * @dev Initial funding for the insurance. Unless there are too many delayed flights
@@ -364,7 +391,6 @@ contract FlightSuretyData {
     function getInsuranceKey(address _passengerAddress, bytes32 _flightKey) pure internal returns(bytes32) {
         bytes32 _addressToBytes32 = bytes32(uint256(uint160(_passengerAddress)) << 96);
         return keccak256(abi.encodePacked(_addressToBytes32, _flightKey));
-        //return keccak256(abi.encodePacked(_passengerAddress, _flightKey));
     }
 
     function getFlightKey

@@ -23,6 +23,7 @@ contract FlightSuretyApp {
     uint8 private constant STATUS_CODE_LATE_OTHER = 50;
 
     address private contractOwner;          // Account used to deploy contract
+    address private dataAddress;
 
     struct Flight {
         bool isRegistered;
@@ -73,11 +74,12 @@ contract FlightSuretyApp {
     */
     constructor
                                 (
-                                  address payable dataAddress
+                                  address payable _dataAddress
                                 )
     {
         contractOwner = msg.sender;
-        flightSuretyData = FlightSuretyData(dataAddress);
+        flightSuretyData = FlightSuretyData(_dataAddress);
+        dataAddress = _dataAddress;
     }
 
     /********************************************************************************************/
@@ -162,6 +164,8 @@ contract FlightSuretyApp {
 
     // Event fired each time an oracle submits a response
     event FlightStatusInfo(address airline, string flight, uint256 timestamp, uint8 status);
+
+    event PayoutPassengerApp(address passenger, address contractAddress);
 
     event OracleReport(address airline, string flight, uint256 timestamp, uint8 status);
 
@@ -331,8 +335,9 @@ contract FlightSuretyApp {
         }
     }
 
-  function pay() external {
-        flightSuretyData.pay(payable(msg.sender));
+  function pay(uint256 amount) external {
+        emit PayoutPassengerApp(msg.sender, address(this));
+        flightSuretyData.pay(payable(msg.sender), amount);
   }
 
 
